@@ -99,6 +99,34 @@ module Kafka
       raise ConnectionError, "Connection error: #{e}"
     end
 
+    def send_async_request(request)
+      # Default notification payload.
+      notification = {
+        broker_host: @host,
+        api: Protocol.api_name(request.api_key),
+        request_size: 0,
+        response_size: 0,
+      }
+
+      @instrumenter.instrument("async_request.connection", notification) do
+        open unless open?
+
+        @correlation_id += 1
+
+        write_request(request, notification)
+
+        response_class = request.response_class
+
+        proc {
+          wait_for_response(response_class, notification) unless response_class.nil?
+        }
+      end
+    rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
+      close
+
+      raise ConnectionError, "Connection error: #{e}"
+    end
+
     private
 
     def open

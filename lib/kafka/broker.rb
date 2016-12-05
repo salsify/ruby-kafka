@@ -40,6 +40,12 @@ module Kafka
       @connection.send_request(request)
     end
 
+    def fetch_messages_async(**options)
+      request = Protocol::FetchRequest.new(**options)
+
+      @connection.send_async_request(request)
+    end
+
     # Lists the offset of the specified topics and partitions.
     #
     # @param (see Kafka::Protocol::ListOffsetRequest#initialize)

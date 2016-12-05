@@ -56,7 +56,7 @@ module Kafka
         end
       end
 
-      topics_by_broker.flat_map {|broker, topics|
+      responses = topics_by_broker.map {|broker, topics|
         resolve_offsets(broker, topics)
 
         options = {
@@ -65,7 +65,11 @@ module Kafka
           topics: topics,
         }
 
-        response = broker.fetch_messages(**options)
+        broker.fetch_messages_async(**options)
+      }
+
+      responses.flat_map {|response_future|
+        response = response_future.call
 
         response.topics.flat_map {|fetched_topic|
           fetched_topic.partitions.map {|fetched_partition|
