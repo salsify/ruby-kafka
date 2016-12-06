@@ -105,6 +105,20 @@ describe Kafka::Connection do
       expect(response).to eq "goodbye!"
     end
 
+    it "allows sending asynchronous requests" do
+      request1 = double(:request1, api_key: api_key, response_class: response_decoder)
+      request2 = double(:request2, api_key: api_key, response_class: response_decoder)
+
+      allow(request1).to receive(:encode) {|encoder| encoder.write_string("response1") }
+      allow(request2).to receive(:encode) {|encoder| encoder.write_string("response2") }
+
+      response1 = connection.send_async_request(request1)
+      response2 = connection.send_async_request(request2)
+
+      expect(response1.call).to eq "response1"
+      expect(response2.call).to eq "response2"
+    end
+
     it "disconnects on network errors" do
       response = connection.send_request(request)
 

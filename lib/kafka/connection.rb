@@ -7,6 +7,21 @@ require "kafka/protocol/decoder"
 
 module Kafka
 
+  class AsyncResponse
+    def initialize(&block)
+      @block = block
+      @response = nil
+    end
+
+    def call
+      @response ||= @block.call
+    end
+
+    def deliver(response)
+      @response = response
+    end
+  end
+
   # A connection to a single Kafka broker.
   #
   # Usually you'll need a separate connection to each broker in a cluster, since most
@@ -50,6 +65,8 @@ module Kafka
       @connect_timeout = connect_timeout || CONNECT_TIMEOUT
       @socket_timeout = socket_timeout || SOCKET_TIMEOUT
       @ssl_context = ssl_context
+
+      @pending_async_responses = {}
     end
 
     def to_s
@@ -91,7 +108,7 @@ module Kafka
         write_request(request, notification)
 
         response_class = request.response_class
-        wait_for_response(response_class, notification) unless response_class.nil?
+        wait_for_response(response_class, @correlation_id, notification) unless response_class.nil?
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
       close
@@ -116,10 +133,15 @@ module Kafka
         write_request(request, notification)
 
         response_class = request.response_class
+        correlation_id = @correlation_id
 
-        proc {
-          wait_for_response(response_class, notification) unless response_class.nil?
+        async_response = AsyncResponse.new {
+          wait_for_response(response_class, correlation_id, notification) unless response_class.nil?
         }
+
+        @pending_async_responses[correlation_id] = async_response
+
+        async_response
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
       close
@@ -143,6 +165,9 @@ module Kafka
 
       # Correlation id is initialized to zero and bumped for each request.
       @correlation_id = 0
+
+      # The pipeline of pending response futures must be reset.
+      @pending_async_responses = {}
     rescue Errno::ETIMEDOUT => e
       @logger.error "Timed out while trying to connect to #{self}: #{e}"
       raise ConnectionError, e
@@ -184,8 +209,8 @@ module Kafka
     #   a given Decoder.
     #
     # @return [nil]
-    def read_response(response_class, notification)
-      @logger.debug "Waiting for response #{@correlation_id} from #{to_s}"
+    def read_response(response_class, expected_correlation_id, notification)
+      @logger.debug "Waiting for response #{expected_correlation_id} from #{to_s}"
 
       data = @decoder.bytes
       notification[:response_size] = data.bytesize
@@ -200,24 +225,31 @@ module Kafka
 
       return correlation_id, response
     rescue Errno::ETIMEDOUT
-      @logger.error "Timed out while waiting for response #{@correlation_id}"
+      @logger.error "Timed out while waiting for response #{expected_correlation_id}"
       raise
     end
 
-    def wait_for_response(response_class, notification)
+    def wait_for_response(response_class, expected_correlation_id, notification)
       loop do
-        correlation_id, response = read_response(response_class, notification)
+        correlation_id, response = read_response(response_class, expected_correlation_id, notification)
 
         # There may have been a previous request that timed out before the client
         # was able to read the response. In that case, the response will still be
         # sitting in the socket waiting to be read. If the response we just read
         # was to a previous request, we can safely skip it.
-        if correlation_id < @correlation_id
-          @logger.error "Received out-of-order response id #{correlation_id}, was expecting #{@correlation_id}"
-        elsif correlation_id > @correlation_id
-          raise Kafka::Error, "Correlation id mismatch: expected #{@correlation_id} but got #{correlation_id}"
+        if correlation_id < expected_correlation_id
+          @pending_async_responses.delete(correlation_id).deliver(response)
+        elsif correlation_id > expected_correlation_id
+          raise Kafka::Error, "Correlation id mismatch: expected #{expected_correlation_id} but got #{correlation_id}"
         else
-          return response
+          async_response = @pending_async_responses.delete(correlation_id)
+
+          if async_response
+            async_response.deliver(response)
+            return async_response.call
+          else
+            return response
+          end
         end
       end
     end
