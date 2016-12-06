@@ -65,8 +65,6 @@ module Kafka
       @connect_timeout = connect_timeout || CONNECT_TIMEOUT
       @socket_timeout = socket_timeout || SOCKET_TIMEOUT
       @ssl_context = ssl_context
-
-      @pending_async_responses = {}
     end
 
     def to_s
@@ -243,13 +241,9 @@ module Kafka
           raise Kafka::Error, "Correlation id mismatch: expected #{expected_correlation_id} but got #{correlation_id}"
         else
           async_response = @pending_async_responses.delete(correlation_id)
+          async_response.deliver(response) if async_response
 
-          if async_response
-            async_response.deliver(response)
-            return async_response.call
-          else
-            return response
-          end
+          return response
         end
       end
     end
