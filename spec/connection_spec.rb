@@ -87,7 +87,7 @@ describe Kafka::Connection do
       expect(response).to eq "hello!"
     end
 
-    it "skips responses to previous requests" do
+    it "skips responses to previous requests if there's no async response in the pipeline" do
       # By passing nil as the final argument we're telling Connection that we're
       # not expecting a response, so it won't read one. However, the fake broker
       # *is* writing a response, so we'll get that the next time we read a response,

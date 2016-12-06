@@ -238,15 +238,19 @@ module Kafka
       loop do
         correlation_id, response = read_response(response_class, expected_correlation_id, notification)
 
-        # There may have been a previous request that timed out before the client
-        # was able to read the response. In that case, the response will still be
-        # sitting in the socket waiting to be read. If the response we just read
-        # was to a previous request, we can safely skip it.
         if correlation_id < expected_correlation_id
-          @pending_async_responses.delete(correlation_id).deliver(response)
+          # There may have been a previous request that timed out before the client
+          # was able to read the response. In that case, the response will still be
+          # sitting in the socket waiting to be read. If the response we just read
+          # was to a previous request, we deliver it to the pending async response
+          # future.
+          async_response = @pending_async_responses.delete(correlation_id)
+          async_response.deliver(response) if async_response
         elsif correlation_id > expected_correlation_id
           raise Kafka::Error, "Correlation id mismatch: expected #{expected_correlation_id} but got #{correlation_id}"
         else
+          # If the request was asynchronous, deliver the response to the pending
+          # async response future.
           async_response = @pending_async_responses.delete(correlation_id)
           async_response.deliver(response) if async_response
 
