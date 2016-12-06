@@ -114,6 +114,13 @@ module Kafka
       raise ConnectionError, "Connection error: #{e}"
     end
 
+    # Sends a request over the connection.
+    #
+    # @param request [#encode, #response_class] the request that should be
+    #   encoded and written.
+    #
+    # @return [AsyncResponse] the async response, allowing the caller to choose
+    #   when to block.
     def send_async_request(request)
       # Default notification payload.
       notification = {
