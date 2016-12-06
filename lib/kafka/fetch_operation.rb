@@ -40,7 +40,11 @@ module Kafka
       }
     end
 
-    def execute
+    def execute(&block)
+      if block.nil?
+        return to_enum(:execute)
+      end
+
       @cluster.add_target_topics(@topics.keys)
       @cluster.refresh_metadata_if_necessary!
 
@@ -68,11 +72,11 @@ module Kafka
         broker.fetch_messages_async(**options)
       }
 
-      responses.flat_map {|response_future|
+      responses.each {|response_future|
         response = response_future.call
 
-        response.topics.flat_map {|fetched_topic|
-          fetched_topic.partitions.map {|fetched_partition|
+        response.topics.each {|fetched_topic|
+          fetched_topic.partitions.each {|fetched_partition|
             begin
               Protocol.handle_error(fetched_partition.error_code)
             rescue Kafka::OffsetOutOfRange => e
@@ -97,7 +101,7 @@ module Kafka
               )
             }
 
-            FetchedBatch.new(
+            yield FetchedBatch.new(
               topic: fetched_topic.name,
               partition: fetched_partition.partition,
               highwater_mark_offset: fetched_partition.highwater_mark_offset,
