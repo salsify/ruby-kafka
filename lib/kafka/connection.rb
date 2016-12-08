@@ -92,8 +92,7 @@ module Kafka
     #
     # @return [Object] the response.
     def send_request(request)
-      async_response = send_async_request(request)
-      async_response.call
+      send_async_request(request) {|async_response| async_response.call }
     end
 
     # Sends a request over the connection.
@@ -103,7 +102,7 @@ module Kafka
     #
     # @return [AsyncResponse] the async response, allowing the caller to choose
     #   when to block.
-    def send_async_request(request)
+    def send_async_request(request, &block)
       # Default notification payload.
       notification = {
         broker_host: @host,
@@ -131,7 +130,11 @@ module Kafka
 
           @pending_async_responses[correlation_id] = async_response
 
-          async_response
+          if block
+            block.call(async_response)
+          else
+            async_response
+          end
         end
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
