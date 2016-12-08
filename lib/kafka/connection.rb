@@ -8,17 +8,19 @@ require "kafka/protocol/decoder"
 module Kafka
 
   class AsyncResponse
-    def initialize(&block)
+    def initialize(decoder, &block)
+      @decoder = decoder
       @block = block
       @response = nil
     end
 
     def call
-      @response ||= @block.call
+      @block.call if @response.nil?
+      @response or raise "what the fuck?!"
     end
 
-    def deliver(response)
-      @response = response
+    def deliver(data)
+      @response = @decoder.decode(data)
     end
   end
 
@@ -90,28 +92,8 @@ module Kafka
     #
     # @return [Object] the response.
     def send_request(request)
-      # Default notification payload.
-      notification = {
-        broker_host: @host,
-        api: Protocol.api_name(request.api_key),
-        request_size: 0,
-        response_size: 0,
-      }
-
-      @instrumenter.instrument("request.connection", notification) do
-        open unless open?
-
-        @correlation_id += 1
-
-        write_request(request, notification)
-
-        response_class = request.response_class
-        wait_for_response(response_class, @correlation_id, notification) unless response_class.nil?
-      end
-    rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
-      close
-
-      raise ConnectionError, "Connection error: #{e}"
+      async_response = send_async_request(request)
+      async_response.call
     end
 
     # Sends a request over the connection.
@@ -130,7 +112,7 @@ module Kafka
         response_size: 0,
       }
 
-      @instrumenter.instrument("async_request.connection", notification) do
+      @instrumenter.instrument("request.connection", notification) do
         open unless open?
 
         @correlation_id += 1
@@ -140,13 +122,17 @@ module Kafka
         response_class = request.response_class
         correlation_id = @correlation_id
 
-        async_response = AsyncResponse.new {
-          wait_for_response(response_class, correlation_id, notification) unless response_class.nil?
-        }
+        if response_class.nil?
+          proc { }
+        else
+          async_response = AsyncResponse.new(response_class) {
+            wait_for_response(correlation_id, notification)
+          }
 
-        @pending_async_responses[correlation_id] = async_response
+          @pending_async_responses[correlation_id] = async_response
 
-        async_response
+          async_response
+        end
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
       close
@@ -214,7 +200,7 @@ module Kafka
     #   a given Decoder.
     #
     # @return [nil]
-    def read_response(response_class, expected_correlation_id, notification)
+    def read_response(expected_correlation_id, notification)
       @logger.debug "Waiting for response #{expected_correlation_id} from #{to_s}"
 
       data = @decoder.bytes
@@ -224,19 +210,22 @@ module Kafka
       response_decoder = Kafka::Protocol::Decoder.new(buffer)
 
       correlation_id = response_decoder.int32
-      response = response_class.decode(response_decoder)
 
       @logger.debug "Received response #{correlation_id} from #{to_s}"
 
-      return correlation_id, response
+      return correlation_id, response_decoder
     rescue Errno::ETIMEDOUT
       @logger.error "Timed out while waiting for response #{expected_correlation_id}"
       raise
+    rescue Errno::EPIPE, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError => e
+      close
+
+      raise ConnectionError, "Connection error: #{e}"
     end
 
-    def wait_for_response(response_class, expected_correlation_id, notification)
+    def wait_for_response(expected_correlation_id, notification)
       loop do
-        correlation_id, response = read_response(response_class, expected_correlation_id, notification)
+        correlation_id, data = read_response(expected_correlation_id, notification)
 
         if correlation_id < expected_correlation_id
           # There may have been a previous request that timed out before the client
@@ -245,16 +234,16 @@ module Kafka
           # was to a previous request, we deliver it to the pending async response
           # future.
           async_response = @pending_async_responses.delete(correlation_id)
-          async_response.deliver(response) if async_response
+          async_response.deliver(data) if async_response
         elsif correlation_id > expected_correlation_id
           raise Kafka::Error, "Correlation id mismatch: expected #{expected_correlation_id} but got #{correlation_id}"
         else
           # If the request was asynchronous, deliver the response to the pending
           # async response future.
           async_response = @pending_async_responses.delete(correlation_id)
-          async_response.deliver(response) if async_response
+          async_response.deliver(data)
 
-          return response
+          return async_response.call
         end
       end
     end
