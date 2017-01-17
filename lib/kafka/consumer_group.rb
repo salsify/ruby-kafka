@@ -63,6 +63,7 @@ module Kafka
     end
 
     def commit_offsets(offsets)
+      @logger.info "Committing offsets member info: group_id=`#{@group_id}`, generation_id=#{@generation_id}, member_id=`#{@member_id}`"
       response = coordinator.commit_offsets(
         group_id: @group_id,
         member_id: @member_id,
@@ -76,12 +77,12 @@ module Kafka
         end
       end
     rescue Kafka::Error => e
-      @logger.error "Error committing offsets: #{e}"
+      @logger.error "Error committing offsets: #{e.class} #{e.message}"
       raise OffsetCommitError, e
     end
 
     def heartbeat
-      @logger.info "Sending heartbeat..."
+      @logger.info "Sending heartbeat... #{@group_id}, #{@generation_id}, #{@member_id}"
 
       response = coordinator.heartbeat(
         group_id: @group_id,
@@ -118,7 +119,7 @@ module Kafka
       @leader_id = response.leader_id
       @members = response.members
 
-      @logger.info "Joined group `#{@group_id}` with member id `#{@member_id}`"
+      @logger.info "Joined group `#{@group_id}` with member id `#{@member_id}` and generation_id `#{@generation_id}`"
     rescue UnknownMemberId
       @logger.error "Failed to join group; resetting member id and retrying in 1s..."
 
