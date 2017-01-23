@@ -64,6 +64,9 @@ module Kafka
         @uncommitted_offsets = 0
         @committed_offsets = nil
       end
+    rescue => e
+      @logger.error "Failed committing offsets #{e}"
+      raise
     end
 
     def commit_offsets_if_necessary

@@ -52,7 +52,8 @@ module Kafka
     def leave
       @logger.info "Leaving group `#{@group_id}`, member #{@member_id}"
       coordinator.leave_group(group_id: @group_id, member_id: @member_id)
-    rescue ConnectionError
+    rescue ConnectionError => e
+      @logger.error "Error leaving group #{e}"
     end
 
     def fetch_offsets
