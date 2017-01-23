@@ -340,7 +340,7 @@ module Kafka
           if paused?(topic, partition)
             @logger.warn "Partition #{topic}/#{partition} is currently paused, skipping"
           else
-            @logger.info "Fetching batch from #{topic}/#{partition} starting at offset #{offset}"
+            @logger.debug "Fetching batch from #{topic}/#{partition} starting at offset #{offset}"
             operation.fetch_from_partition(topic, partition, offset: offset, max_bytes: max_bytes)
           end
         end

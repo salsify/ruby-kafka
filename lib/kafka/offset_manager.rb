@@ -127,7 +127,7 @@ module Kafka
         offsets
       end
       offset = @committed_offsets.offset_for(topic, partition)
-      @logger.info "Using offset -1 for topic #{topic}, partition #{partition}" if offset == -1
+      @logger.debug "No offset for topic #{topic}, partition #{partition}" if offset == -1
       offset
     end
 
