@@ -118,7 +118,7 @@ module Kafka
           offset = options.fetch(:fetch_offset)
           next if offset >= 0
 
-          @logger.debug "Resolving offset `#{offset}` for #{topic}/#{partition}..."
+          @logger.info "Resolving offset `#{offset}` for #{topic}/#{partition}..."
 
           pending_topics[topic] ||= []
           pending_topics[topic] << {
@@ -138,7 +138,7 @@ module Kafka
           partition = options.fetch(:partition)
           resolved_offset = response.offset_for(topic, partition)
 
-          @logger.debug "Offset for #{topic}/#{partition} is #{resolved_offset.inspect}"
+          @logger.info "Offset for #{topic}/#{partition} is #{resolved_offset.inspect}"
 
           topics[topic][partition][:fetch_offset] = resolved_offset || 0
         end
