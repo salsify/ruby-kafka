@@ -103,7 +103,7 @@ module Kafka
     def resolve_offset(topic, partition)
       @resolved_offsets[topic] ||= begin
         offsets = fetch_resolved_offsets(topic)
-        @logger.info "Resolved offsets #{offsets}"
+        @logger.info "Resolved offsets for topic #{topic}: #{offsets}"
         offsets
       end
       @resolved_offsets[topic].fetch(partition)
@@ -123,7 +123,7 @@ module Kafka
     def committed_offset_for(topic, partition)
       @committed_offsets ||= begin
         offsets = @group.fetch_offsets
-        @logger.info "Fetched offsets #{offsets}"
+        @logger.info "Fetched offsets #{offsets.topics}"
         offsets
       end
       offset = @committed_offsets.offset_for(topic, partition)
