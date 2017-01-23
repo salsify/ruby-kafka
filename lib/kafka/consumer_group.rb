@@ -73,7 +73,7 @@ module Kafka
 
       response.topics.each do |topic, partitions|
         partitions.each do |partition, error_code|
-          @logger.info "Handling error #{error_code} for topic #{topic}, partition #{partition}"
+          @logger.info "Handling error #{error_code} for topic #{topic}, partition #{partition}" unless error_code == 0
           Protocol.handle_error(error_code)
         end
       end

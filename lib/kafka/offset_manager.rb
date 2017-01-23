@@ -123,7 +123,12 @@ module Kafka
     def committed_offset_for(topic, partition)
       @committed_offsets ||= begin
         offsets = @group.fetch_offsets
-        @logger.info "Fetched offsets #{offsets.topics}"
+        offsets.topics.each do |(name, value)|
+          partition_map = value.each_with_object({}) do |(partition, offset), memo|
+            memo[partition] = offset.offset
+          end
+          @logger.info "Fetched offsets topic #{name}: #{partition_map} "
+        end
         offsets
       end
       offset = @committed_offsets.offset_for(topic, partition)
