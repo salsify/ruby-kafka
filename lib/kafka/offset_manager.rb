@@ -26,7 +26,7 @@ module Kafka
       # The committed offset should always be the offset of the next message that the
       # application will read, thus adding one to the last message processed
       @processed_offsets[topic][partition] = offset + 1
-      @logger.debug "Marking #{topic}/#{partition}:#{offset} as committed"
+      @logger.info "Marking #{topic}/#{partition}:#{offset} as committed"
     end
 
     def seek_to_default(topic, partition)
@@ -73,6 +73,7 @@ module Kafka
     end
 
     def clear_offsets
+      @logger.info "Clearing offsets"
       @processed_offsets.clear
       @resolved_offsets.clear
 
@@ -82,6 +83,7 @@ module Kafka
 
     def clear_offsets_excluding(excluded)
       # Clear all offsets that aren't in `excluded`.
+      @logger.info "Clearing offsets EXCEPT #{excluded}"
       @processed_offsets.each do |topic, partitions|
         partitions.keep_if do |partition, _|
           excluded.fetch(topic, []).include?(partition)
@@ -96,7 +98,11 @@ module Kafka
     private
 
     def resolve_offset(topic, partition)
-      @resolved_offsets[topic] ||= fetch_resolved_offsets(topic)
+      @resolved_offsets[topic] ||= begin
+        offsets = fetch_resolved_offsets(topic)
+        @logger.info "Resolved offsets #{offsets}"
+        offsets
+      end
       @resolved_offsets[topic].fetch(partition)
     end
 
@@ -112,8 +118,14 @@ module Kafka
     end
 
     def committed_offset_for(topic, partition)
-      @committed_offsets ||= @group.fetch_offsets
-      @committed_offsets.offset_for(topic, partition)
+      @committed_offsets ||= begin
+        offsets = @group.fetch_offsets
+        @logger.info "Fetched offsets #{offsets}"
+        offsets
+      end
+      offset = @committed_offsets.offset_for(topic, partition)
+      @logger.info "Using offset -1 for topic #{topic}, partition #{partition}" if offset == -1
+      offset
     end
 
     def commit_timeout_reached?

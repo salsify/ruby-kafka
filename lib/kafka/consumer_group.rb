@@ -50,7 +50,7 @@ module Kafka
     end
 
     def leave
-      @logger.info "Leaving group `#{@group_id}`"
+      @logger.info "Leaving group `#{@group_id}`, member #{@member_id}"
       coordinator.leave_group(group_id: @group_id, member_id: @member_id)
     rescue ConnectionError
     end
@@ -72,16 +72,17 @@ module Kafka
 
       response.topics.each do |topic, partitions|
         partitions.each do |partition, error_code|
+          @logger.info "Handling error #{error_code} for topic #{topic}, partition #{partition}"
           Protocol.handle_error(error_code)
         end
       end
     rescue Kafka::Error => e
-      @logger.error "Error committing offsets: #{e}"
+      @logger.error "Error committing offsets: #{e}, offsets: #{offsets}"
       raise OffsetCommitError, e
     end
 
     def heartbeat
-      @logger.info "Sending heartbeat..."
+      @logger.info "Sending heartbeat for group `#{@group_id}`, member #{@member_id}, generation #{@generation_id}"
 
       response = coordinator.heartbeat(
         group_id: @group_id,
@@ -91,7 +92,7 @@ module Kafka
 
       Protocol.handle_error(response.error_code)
     rescue ConnectionError, UnknownMemberId, RebalanceInProgress, IllegalGeneration => e
-      @logger.error "Error sending heartbeat: #{e}"
+      @logger.error "Error sending heartbeat: #{e}, group `#{@group_id}`, member #{@member_id}, generation #{@generation_id}"
       raise HeartbeatError, e
     rescue NotCoordinatorForGroup
       @logger.error "Failed to find coordinator for group `#{@group_id}`; retrying..."
