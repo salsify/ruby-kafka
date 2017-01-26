@@ -1,7 +1,7 @@
 describe "Consumer API", functional: true do
   let(:num_partitions) { 15 }
   let!(:topic) { create_random_topic(num_partitions: 3) }
-  let(:offset_retention_time) { 1 }
+  let(:offset_retention_time) { 30 }
 
   example "consuming messages from the beginning of a topic" do
     messages = (1..1000).to_a
