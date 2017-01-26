@@ -5,7 +5,7 @@ module Kafka
   class ConsumerGroup
     attr_reader :assigned_partitions, :generation_id
 
-    def initialize(cluster:, logger:, group_id:, session_timeout:, offset_retention_time:)
+    def initialize(cluster:, logger:, group_id:, session_timeout:, retention_time:)
       @cluster = cluster
       @logger = logger
       @group_id = group_id
@@ -16,8 +16,7 @@ module Kafka
       @topics = Set.new
       @assigned_partitions = {}
       @assignment_strategy = RoundRobinAssignmentStrategy.new(cluster: @cluster)
-      # The Kafka protocol expects the retention time to be in ms.
-      @retention_time = (offset_retention_time > -1) ? (offset_retention_time * 1_000) : offset_retention_time
+      @retention_time = retention_time
     end
 
     def subscribe(topic)
