@@ -84,6 +84,7 @@ describe Kafka::OffsetManager do
         end
         Timecop.freeze(Time.now)
         # initial commit
+        fetch_committed_offsets
         offset_manager.mark_as_processed("greetings", 0, 0)
         offset_manager.commit_offsets_if_necessary
         expect(commits.size).to eq(1)
@@ -109,7 +110,6 @@ describe Kafka::OffsetManager do
       context "after the commit timeout" do
         before do
           Timecop.travel(commit_interval + 1)
-          fetch_committed_offsets
         end
 
         it "commits processed offsets without recommitting previously committed offsets" do
@@ -129,7 +129,6 @@ describe Kafka::OffsetManager do
       context "after the recommit timeout" do
         before do
           Timecop.travel(offset_retention_time / 2 + 1)
-          fetch_committed_offsets
         end
 
         it "commits processed offsets and recommits previously committed offsets" do

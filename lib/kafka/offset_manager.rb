@@ -112,22 +112,25 @@ module Kafka
       @cluster.resolve_offsets(topic, partitions, default_offset)
     end
 
-    def seconds_since_last_commit
-      Time.now - @last_commit
+    def seconds_since(time)
+      Time.now - time
     end
 
-    def seconds_since_last_recommit
-      Time.now - @last_recommit
+    def seconds_since_last_commit
+      seconds_since(@last_commit)
+    end
+
+    def committed_offsets
+      @committed_offsets ||= @group.fetch_offsets
     end
 
     def committed_offset_for(topic, partition)
-      @committed_offsets ||= @group.fetch_offsets
-      @committed_offsets.offset_for(topic, partition)
+      committed_offsets.offset_for(topic, partition)
     end
 
     def offsets_to_commit(recommit = false)
-      if recommit && !@committed_offsets.nil?
-        committed_offsets_hash.merge!(@processed_offsets) do |_topic, committed, processed|
+      if recommit
+        offsets_to_recommit.merge!(@processed_offsets) do |_topic, committed, processed|
           committed.merge!(processed)
         end
       else
@@ -135,10 +138,10 @@ module Kafka
       end
     end
 
-    def committed_offsets_hash
-      @committed_offsets.topics.each_with_object({}) do |(topic, partition_info), offsets|
+    def offsets_to_recommit
+      committed_offsets.topics.each_with_object({}) do |(topic, partition_info), offsets|
         topic_offsets = partition_info.keys.each_with_object({}) do |partition, partition_map|
-          offset = @committed_offsets.offset_for(topic, partition)
+          offset = committed_offsets.offset_for(topic, partition)
           partition_map[partition] = offset unless offset == -1
         end
         offsets[topic] = topic_offsets unless topic_offsets.empty?
@@ -146,7 +149,7 @@ module Kafka
     end
 
     def recommit_timeout_reached?
-      @last_recommit.nil? || seconds_since_last_recommit >= @recommit_interval
+      @last_recommit.nil? || seconds_since(@last_recommit) >= @recommit_interval
     end
 
     def commit_timeout_reached?
